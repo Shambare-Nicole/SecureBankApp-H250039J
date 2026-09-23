@@ -1,0 +1,23 @@
+# Build output
+target/
+*.class
+
+# Runtime data (may contain user records) and logs
+data/
+logs/
+*.log
+*.tmp
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets - never commit
+*.pem
+*.key
+.env
