@@ -49,7 +49,8 @@ mvn test
 3. Start the application:
 
 ```bash
-mvn exec:java -Dexec.mainClass=com.securebank.Main
+mvn clean package
+java -jar target\securebankapp-1.0.0.jar
 ```
 
 ## Application Flow
