@@ -22,7 +22,7 @@ The primary goal of this project is to design and implement a secure banking sys
 
 ## Technologies Used
 
-- Java 17
+- Java 25
 - Maven
 - JUnit 5
 - File-based storage using plain text files
