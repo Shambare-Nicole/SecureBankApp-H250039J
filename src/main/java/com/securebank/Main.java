@@ -1,6 +1,9 @@
 package com.securebank;
 
 import com.securebank.config.AppConfig;
+import com.securebank.exception.AccountLockedException;
+import com.securebank.exception.BankException;
+import com.securebank.exception.StorageException;
 import com.securebank.model.Transaction;
 import com.securebank.service.BankingService;
 import java.math.BigDecimal;
@@ -100,7 +103,7 @@ public final class Main {
         try {
             BANKING_SERVICE.registerUser(username, password);
             System.out.println("User registered successfully.");
-        } catch (IllegalArgumentException e) {
+        } catch (BankException e) {
             System.out.println("Registration failed: " + e.getMessage());
         }
     }
@@ -118,7 +121,7 @@ public final class Main {
             } else {
                 System.out.println("Login failed. Please check your details.");
             }
-        } catch (IllegalStateException e) {
+        } catch (AccountLockedException e) {
             System.out.println(e.getMessage());
         }
     }
@@ -129,7 +132,7 @@ public final class Main {
         try {
             String accountNumber = BANKING_SERVICE.createAccount(currentUser, accountName);
             System.out.println("Account created successfully. Account Number: " + accountNumber);
-        } catch (IllegalArgumentException e) {
+        } catch (BankException e) {
             System.out.println("Error: " + e.getMessage());
         }
     }
@@ -152,7 +155,7 @@ public final class Main {
             System.out
                     .println("Balance for account " + accountNumber + ": "
                             + BANKING_SERVICE.getBalance(currentUser, accountNumber));
-        } catch (IllegalArgumentException e) {
+        } catch (BankException e) {
             System.out.println("Error: " + e.getMessage());
         }
     }
@@ -174,10 +177,10 @@ public final class Main {
             BANKING_SERVICE.deposit(currentUser, accountNumber, amount);
             System.out.println("Deposit successful. New balance: "
                     + BANKING_SERVICE.getBalance(currentUser, accountNumber));
-        } catch (IllegalArgumentException e) {
-            System.out.println("Deposit failed: " + e.getMessage());
-        } catch (IllegalStateException e) {
+        } catch (StorageException e) {
             System.out.println("Deposit could not be completed because of a storage error.");
+        } catch (BankException e) {
+            System.out.println("Deposit failed: " + e.getMessage());
         }
     }
 
@@ -198,10 +201,10 @@ public final class Main {
             BANKING_SERVICE.withdraw(currentUser, accountNumber, amount);
             System.out.println("Withdrawal successful. New balance: "
                     + BANKING_SERVICE.getBalance(currentUser, accountNumber));
-        } catch (IllegalArgumentException e) {
-            System.out.println("Withdrawal failed: " + e.getMessage());
-        } catch (IllegalStateException e) {
+        } catch (StorageException e) {
             System.out.println("Withdrawal could not be completed because of a storage error.");
+        } catch (BankException e) {
+            System.out.println("Withdrawal failed: " + e.getMessage());
         }
     }
 
@@ -221,7 +224,7 @@ public final class Main {
                         + transaction.getType() + " | "
                         + transaction.getAmount() + " | Balance: " + transaction.getBalanceAfter());
             }
-        } catch (IllegalArgumentException e) {
+        } catch (BankException e) {
             System.out.println("Error: " + e.getMessage());
         }
     }

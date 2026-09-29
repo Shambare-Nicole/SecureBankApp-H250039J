@@ -1,5 +1,8 @@
 package com.securebank.model;
 
+import com.securebank.exception.InsufficientFundsException;
+import com.securebank.exception.StorageException;
+import com.securebank.exception.ValidationException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
@@ -34,17 +37,17 @@ public class BankAccount {
 
     public void deposit(BigDecimal amount) {
         if (amount == null || amount.signum() <= 0) {
-            throw new IllegalArgumentException("Deposit amount must be greater than zero.");
+            throw new ValidationException("Deposit amount must be greater than zero.");
         }
         balance = balance.add(amount).setScale(2, RoundingMode.HALF_EVEN);
     }
 
     public void withdraw(BigDecimal amount) {
         if (amount == null || amount.signum() <= 0) {
-            throw new IllegalArgumentException("Withdrawal amount must be greater than zero.");
+            throw new ValidationException("Withdrawal amount must be greater than zero.");
         }
         if (balance.compareTo(amount) < 0) {
-            throw new IllegalArgumentException("Insufficient funds.");
+            throw new InsufficientFundsException("Insufficient funds.");
         }
         balance = balance.subtract(amount).setScale(2, RoundingMode.HALF_EVEN);
     }
@@ -56,8 +59,12 @@ public class BankAccount {
     public static BankAccount fromFileString(String line) {
         String[] parts = line.split("\\|", 4);
         if (parts.length != 4) {
-            throw new IllegalArgumentException("Invalid account record: " + line);
+            throw new StorageException("Invalid account record.");
         }
-        return new BankAccount(parts[0], parts[1], parts[2], new BigDecimal(parts[3]));
+        try {
+            return new BankAccount(parts[0], parts[1], parts[2], new BigDecimal(parts[3]));
+        } catch (NumberFormatException e) {
+            throw new StorageException("Invalid account record.", e);
+        }
     }
 }

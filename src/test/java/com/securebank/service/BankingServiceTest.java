@@ -6,6 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.securebank.config.AppConfig;
+import com.securebank.exception.AccountLockedException;
+import com.securebank.exception.InsufficientFundsException;
+import com.securebank.exception.StorageException;
+import com.securebank.exception.UnauthorizedAccessException;
+import com.securebank.exception.ValidationException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,7 +47,7 @@ class BankingServiceTest {
         String accountNumber = service.createAccount("alice", "Savings");
         service.deposit("alice", accountNumber, new BigDecimal("50.00"));
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(InsufficientFundsException.class,
                 () -> service.withdraw("alice", accountNumber, new BigDecimal("1000.00")));
     }
 
@@ -67,7 +72,7 @@ class BankingServiceTest {
 
     @Test
     void registeringDuplicateUsernameIsRejected() {
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ValidationException.class,
                 () -> service.registerUser("alice", "AnotherPassword123!"));
     }
 
@@ -75,9 +80,9 @@ class BankingServiceTest {
     void depositRejectsZeroAndNegativeAmounts() {
         String accountNumber = service.createAccount("alice", "Savings");
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ValidationException.class,
                 () -> service.deposit("alice", accountNumber, BigDecimal.ZERO));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ValidationException.class,
                 () -> service.deposit("alice", accountNumber, new BigDecimal("-1.00")));
     }
 
@@ -95,9 +100,9 @@ class BankingServiceTest {
     void withdrawalRejectsZeroAndNegativeAmounts() {
         String accountNumber = service.createAccount("alice", "Savings");
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ValidationException.class,
                 () -> service.withdraw("alice", accountNumber, BigDecimal.ZERO));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ValidationException.class,
                 () -> service.withdraw("alice", accountNumber, new BigDecimal("-1.00")));
     }
 
@@ -106,12 +111,12 @@ class BankingServiceTest {
         service.registerUser("bob", "StrongPass123!");
         String accountNumber = service.createAccount("alice", "Savings");
 
-        assertThrows(IllegalArgumentException.class, () -> service.getBalance("bob", accountNumber));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(UnauthorizedAccessException.class, () -> service.getBalance("bob", accountNumber));
+        assertThrows(UnauthorizedAccessException.class,
                 () -> service.deposit("bob", accountNumber, new BigDecimal("10.00")));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(UnauthorizedAccessException.class,
                 () -> service.withdraw("bob", accountNumber, new BigDecimal("10.00")));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(UnauthorizedAccessException.class,
                 () -> service.getTransactionsForAccount("bob", accountNumber));
     }
 
@@ -133,9 +138,9 @@ class BankingServiceTest {
             assertFalse(service.login("unknown", "WrongPassword!"));
         }
 
-        assertThrows(IllegalStateException.class,
+        assertThrows(AccountLockedException.class,
                 () -> service.login("unknown", "WrongPassword!"));
-        assertThrows(IllegalStateException.class,
+        assertThrows(AccountLockedException.class,
                 () -> service.login("unknown", "WrongPassword!"));
     }
 
@@ -154,7 +159,7 @@ class BankingServiceTest {
         Path usersFile = dataDirectory.resolve(AppConfig.USERS_FILE);
         Files.write(usersFile, List.of("bad-1", "bad-2", "bad-3", "bad-4", "bad-5", "bad-6"));
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
+        StorageException error = assertThrows(StorageException.class,
                 () -> new BankingService(dataDirectory.toString()));
 
         assertTrue(error.getMessage().contains("Too many malformed lines"));

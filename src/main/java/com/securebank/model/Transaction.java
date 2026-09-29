@@ -1,5 +1,6 @@
 package com.securebank.model;
 
+import com.securebank.exception.StorageException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -49,8 +50,12 @@ public class Transaction {
     public static Transaction fromFileString(String line) {
         String[] parts = line.split("\\|", 5);
         if (parts.length != 5) {
-            throw new IllegalArgumentException("Invalid transaction record: " + line);
+            throw new StorageException("Invalid transaction record.");
         }
-        return new Transaction(parts[1], parts[2], new BigDecimal(parts[3]), new BigDecimal(parts[4]));
+        try {
+            return new Transaction(parts[1], parts[2], new BigDecimal(parts[3]), new BigDecimal(parts[4]));
+        } catch (NumberFormatException e) {
+            throw new StorageException("Invalid transaction record.", e);
+        }
     }
 }
