@@ -1,5 +1,6 @@
 # Build output
 target/
+bin/
 *.class
 
 # Runtime data (may contain user records) and logs

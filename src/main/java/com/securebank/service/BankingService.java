@@ -10,9 +10,11 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
@@ -21,14 +23,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.logging.Logger;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 
 public class BankingService {
+    private static final Logger LOGGER = Logger.getLogger(BankingService.class.getName());
     private final Path dataDirectory;
     private final Map<String, User> users = new HashMap<>();
     private final Map<String, BankAccount> accounts = new HashMap<>();
     private final List<Transaction> transactions = new ArrayList<>();
+    private final Map<String, Integer> failedLoginAttempts = new HashMap<>();
+    private final Map<String, Instant> loginLockouts = new HashMap<>();
     private final Random random = new SecureRandom();
 
     public BankingService() {
@@ -60,15 +66,39 @@ public class BankingService {
     }
 
     public boolean login(String username, String password) {
-        User user = users.get(normalizeUsername(username));
-        if (user == null || password == null) {
-            return false;
+        String normalizedUsername = normalizeUsername(username);
+        Instant lockoutExpiry = loginLockouts.get(normalizedUsername);
+        Instant now = Instant.now();
+        if (lockoutExpiry != null) {
+            if (now.isBefore(lockoutExpiry)) {
+                throw new IllegalStateException("Account is locked. Try again later.");
+            }
+            loginLockouts.remove(normalizedUsername);
+            failedLoginAttempts.remove(normalizedUsername);
         }
-        return isValidPassword(password, user);
+
+        User user = users.get(normalizedUsername);
+        if (user != null && password != null && isValidPassword(password, user)) {
+            failedLoginAttempts.remove(normalizedUsername);
+            return true;
+        }
+
+        int attempts = failedLoginAttempts.getOrDefault(normalizedUsername, 0) + 1;
+        if (attempts >= AppConfig.MAX_FAILED_LOGINS) {
+            failedLoginAttempts.remove(normalizedUsername);
+            loginLockouts.put(normalizedUsername, now.plus(AppConfig.LOCKOUT_DURATION));
+            throw new IllegalStateException("Account is locked due to too many failed login attempts.");
+        }
+        failedLoginAttempts.put(normalizedUsername, attempts);
+        return false;
     }
 
     public User getUser(String username) {
         return users.get(normalizeUsername(username));
+    }
+
+    public static BigDecimal parseAmount(String input) {
+        return new BigDecimal(input);
     }
 
     public String createAccount(String username, String accountName) {
@@ -90,13 +120,13 @@ public class BankingService {
         return accountNumber;
     }
 
-    public BigDecimal getBalance(String accountNumber) {
-        BankAccount bankAccount = getAccount(accountNumber);
+    public BigDecimal getBalance(String username, String accountNumber) {
+        BankAccount bankAccount = getOwnedAccount(username, accountNumber);
         return bankAccount.getBalance();
     }
 
-    public void deposit(String accountNumber, BigDecimal amount) {
-        BankAccount bankAccount = getAccount(accountNumber);
+    public void deposit(String username, String accountNumber, BigDecimal amount) {
+        BankAccount bankAccount = getOwnedAccount(username, accountNumber);
         validateAmount(amount, "Deposit");
         bankAccount.deposit(amount);
         transactions.add(new Transaction(accountNumber, "DEPOSIT", amount, bankAccount.getBalance()));
@@ -104,8 +134,8 @@ public class BankingService {
         persistTransactions();
     }
 
-    public void withdraw(String accountNumber, BigDecimal amount) {
-        BankAccount bankAccount = getAccount(accountNumber);
+    public void withdraw(String username, String accountNumber, BigDecimal amount) {
+        BankAccount bankAccount = getOwnedAccount(username, accountNumber);
         validateAmount(amount, "Withdrawal");
         if (bankAccount.getBalance().compareTo(amount) < 0) {
             throw new IllegalArgumentException("Insufficient funds.");
@@ -127,7 +157,8 @@ public class BankingService {
         return result;
     }
 
-    public List<Transaction> getTransactionsForAccount(String accountNumber) {
+    public List<Transaction> getTransactionsForAccount(String username, String accountNumber) {
+        getOwnedAccount(username, accountNumber);
         String normalizedNumber = normalizeAccountNumber(accountNumber);
         List<Transaction> result = new ArrayList<>();
         for (Transaction transaction : transactions) {
@@ -161,12 +192,18 @@ public class BankingService {
         }
         try {
             List<String> lines = Files.readAllLines(usersFile, StandardCharsets.UTF_8);
-            for (String line : lines) {
+            int malformedLines = 0;
+            for (int index = 0; index < lines.size(); index++) {
+                String line = lines.get(index);
                 if (line == null || line.isBlank()) {
                     continue;
                 }
-                User user = User.fromFileString(line);
-                users.put(normalizeUsername(user.getUsername()), user);
+                try {
+                    User user = User.fromFileString(line);
+                    users.put(normalizeUsername(user.getUsername()), user);
+                } catch (RuntimeException e) {
+                    malformedLines = recordMalformedLine(usersFile, index + 1, malformedLines);
+                }
             }
         } catch (IOException e) {
             throw new IllegalStateException("Unable to load users from disk.", e);
@@ -180,12 +217,18 @@ public class BankingService {
         }
         try {
             List<String> lines = Files.readAllLines(accountsFile, StandardCharsets.UTF_8);
-            for (String line : lines) {
+            int malformedLines = 0;
+            for (int index = 0; index < lines.size(); index++) {
+                String line = lines.get(index);
                 if (line == null || line.isBlank()) {
                     continue;
                 }
-                BankAccount account = BankAccount.fromFileString(line);
-                accounts.put(account.getAccountNumber(), account);
+                try {
+                    BankAccount account = BankAccount.fromFileString(line);
+                    accounts.put(account.getAccountNumber(), account);
+                } catch (RuntimeException e) {
+                    malformedLines = recordMalformedLine(accountsFile, index + 1, malformedLines);
+                }
             }
         } catch (IOException e) {
             throw new IllegalStateException("Unable to load accounts from disk.", e);
@@ -199,11 +242,17 @@ public class BankingService {
         }
         try {
             List<String> lines = Files.readAllLines(transactionsFile, StandardCharsets.UTF_8);
-            for (String line : lines) {
+            int malformedLines = 0;
+            for (int index = 0; index < lines.size(); index++) {
+                String line = lines.get(index);
                 if (line == null || line.isBlank()) {
                     continue;
                 }
-                transactions.add(Transaction.fromFileString(line));
+                try {
+                    transactions.add(Transaction.fromFileString(line));
+                } catch (RuntimeException e) {
+                    malformedLines = recordMalformedLine(transactionsFile, index + 1, malformedLines);
+                }
             }
         } catch (IOException e) {
             throw new IllegalStateException("Unable to load transaction history from disk.", e);
@@ -238,20 +287,45 @@ public class BankingService {
     }
 
     private void writeFile(Path file, List<String> lines) {
+        Path temporaryFile = null;
         try {
-            Files.write(file, lines, StandardCharsets.UTF_8);
+            temporaryFile = Files.createTempFile(file.getParent(), file.getFileName().toString(), ".tmp");
+            Files.write(temporaryFile, lines, StandardCharsets.UTF_8);
+            Files.move(temporaryFile, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new IllegalStateException("Unable to write file: " + file, e);
+        } finally {
+            if (temporaryFile != null) {
+                try {
+                    Files.deleteIfExists(temporaryFile);
+                } catch (IOException e) {
+                    throw new IllegalStateException("Unable to clean up temporary data file.", e);
+                }
+            }
         }
     }
 
-    private BankAccount getAccount(String accountNumber) {
+    private BankAccount getOwnedAccount(String username, String accountNumber) {
+        String normalizedUsername = normalizeUsername(username);
         String normalizedNumber = normalizeAccountNumber(accountNumber);
         BankAccount bankAccount = accounts.get(normalizedNumber);
         if (bankAccount == null) {
             throw new IllegalArgumentException("Account not found.");
         }
+        if (!bankAccount.getUsername().equals(normalizedUsername)) {
+            throw new IllegalArgumentException("You are not authorized to access this account.");
+        }
         return bankAccount;
+    }
+
+    private int recordMalformedLine(Path file, int lineNumber, int malformedLines) {
+        LOGGER.warning("Skipping malformed record in " + file.getFileName() + " at line " + lineNumber + ".");
+        int totalMalformedLines = malformedLines + 1;
+        if (totalMalformedLines > AppConfig.MAX_MALFORMED_LINES) {
+            throw new IllegalStateException("Too many malformed lines in " + file.getFileName()
+                    + "; refusing to load data safely.");
+        }
+        return totalMalformedLines;
     }
 
     private String normalizeUsername(String username) {

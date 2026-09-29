@@ -1,5 +1,6 @@
 package com.securebank;
 
+import com.securebank.config.AppConfig;
 import com.securebank.model.Transaction;
 import com.securebank.service.BankingService;
 import java.math.BigDecimal;
@@ -93,7 +94,7 @@ public final class Main {
     private static void registerUser() {
         System.out.print("Enter username: ");
         String username = readLine();
-        System.out.print("Enter password (minimum 10 chars): ");
+        System.out.print("Enter password (minimum " + AppConfig.PASSWORD_MIN_LENGTH + " chars): ");
         String password = readLine();
 
         try {
@@ -110,11 +111,15 @@ public final class Main {
         System.out.print("Enter password: ");
         String password = readLine();
 
-        if (BANKING_SERVICE.login(username, password)) {
-            currentUser = username;
-            System.out.println("Login successful.");
-        } else {
-            System.out.println("Login failed. Please check your details.");
+        try {
+            if (BANKING_SERVICE.login(username, password)) {
+                currentUser = username;
+                System.out.println("Login successful.");
+            } else {
+                System.out.println("Login failed. Please check your details.");
+            }
+        } catch (IllegalStateException e) {
+            System.out.println(e.getMessage());
         }
     }
 
@@ -138,14 +143,15 @@ public final class Main {
 
         System.out.println("Your accounts:");
         for (String accountNumber : accounts) {
-            System.out.println("- " + accountNumber + " => " + BANKING_SERVICE.getBalance(accountNumber));
+            System.out.println("- " + accountNumber + " => " + BANKING_SERVICE.getBalance(currentUser, accountNumber));
         }
 
         System.out.print("Enter account number to view details: ");
         String accountNumber = readLine();
         try {
             System.out
-                    .println("Balance for account " + accountNumber + ": " + BANKING_SERVICE.getBalance(accountNumber));
+                    .println("Balance for account " + accountNumber + ": "
+                            + BANKING_SERVICE.getBalance(currentUser, accountNumber));
         } catch (IllegalArgumentException e) {
             System.out.println("Error: " + e.getMessage());
         }
@@ -157,12 +163,21 @@ public final class Main {
         System.out.print("Enter deposit amount: ");
         String input = readLine();
 
+        BigDecimal amount;
         try {
-            BigDecimal amount = new BigDecimal(input);
-            BANKING_SERVICE.deposit(accountNumber, amount);
-            System.out.println("Deposit successful. New balance: " + BANKING_SERVICE.getBalance(accountNumber));
-        } catch (Exception e) {
-            System.out.println("Error: " + e.getMessage());
+            amount = BankingService.parseAmount(input);
+        } catch (NumberFormatException e) {
+            System.out.println("Deposit failed: enter a valid numeric amount.");
+            return;
+        }
+        try {
+            BANKING_SERVICE.deposit(currentUser, accountNumber, amount);
+            System.out.println("Deposit successful. New balance: "
+                    + BANKING_SERVICE.getBalance(currentUser, accountNumber));
+        } catch (IllegalArgumentException e) {
+            System.out.println("Deposit failed: " + e.getMessage());
+        } catch (IllegalStateException e) {
+            System.out.println("Deposit could not be completed because of a storage error.");
         }
     }
 
@@ -172,12 +187,21 @@ public final class Main {
         System.out.print("Enter withdrawal amount: ");
         String input = readLine();
 
+        BigDecimal amount;
         try {
-            BigDecimal amount = new BigDecimal(input);
-            BANKING_SERVICE.withdraw(accountNumber, amount);
-            System.out.println("Withdrawal successful. New balance: " + BANKING_SERVICE.getBalance(accountNumber));
-        } catch (Exception e) {
-            System.out.println("Error: " + e.getMessage());
+            amount = BankingService.parseAmount(input);
+        } catch (NumberFormatException e) {
+            System.out.println("Withdrawal failed: enter a valid numeric amount.");
+            return;
+        }
+        try {
+            BANKING_SERVICE.withdraw(currentUser, accountNumber, amount);
+            System.out.println("Withdrawal successful. New balance: "
+                    + BANKING_SERVICE.getBalance(currentUser, accountNumber));
+        } catch (IllegalArgumentException e) {
+            System.out.println("Withdrawal failed: " + e.getMessage());
+        } catch (IllegalStateException e) {
+            System.out.println("Withdrawal could not be completed because of a storage error.");
         }
     }
 
@@ -185,7 +209,7 @@ public final class Main {
         System.out.print("Enter account number: ");
         String accountNumber = readLine();
         try {
-            List<Transaction> transactions = BANKING_SERVICE.getTransactionsForAccount(accountNumber);
+            List<Transaction> transactions = BANKING_SERVICE.getTransactionsForAccount(currentUser, accountNumber);
             if (transactions.isEmpty()) {
                 System.out.println("No transactions recorded for this account.");
                 return;
