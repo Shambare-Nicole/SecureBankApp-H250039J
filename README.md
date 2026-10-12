@@ -17,7 +17,7 @@ The primary goal of this project is to design and implement a secure banking sys
 - Maximum transaction and balance checks
 - Transaction history tracking
 - Persistent storage using text files for users, accounts, and transactions
-- Input validation for usernames, passwords, and financial values
+- Input validation for alphabetic-only usernames, passwords, and financial values
 - Secure configuration constants for application rules
 
 ## Technologies Used
@@ -70,6 +70,26 @@ After login, the user can:
 - review transaction history
 - log out
 
+## Screenshot Evidence
+
+The following screenshots show the application build, registration and login flows, logout, and transaction validation:
+
+| Build | Registration |
+| --- | --- |
+| ![Build success](evidence/Build%20success%20evidence.png) | ![Registration](evidence/Registration.png) |
+
+| Login | Successful login |
+| --- | --- |
+| ![Login evidence](evidence/login%20evidence.png) | ![Successful login](evidence/successful%20login%20evidence.png) |
+
+| Logout | Failed withdrawal |
+| --- | --- |
+| ![Logout success](evidence/Logout%20success.png) | ![Failed withdrawal](evidence/failed%20withdrawal%20evidence.png) |
+
+| Generic message check |
+| --- |
+| ![Generic message check](evidence/generic%20message%20check.png) |
+
 ## Data Persistence
 
 The application stores data in text files within the project data directory:
@@ -85,7 +105,8 @@ This ensures the application retains user credentials, account details, and tran
 - Passwords are never stored in plaintext.
 - Each password is hashed using a random salt and PBKDF2.
 - System limits prevent invalid financial values from being processed.
-- Usernames and passwords are validated before acceptance.
+- Usernames must be 3–20 alphabetic characters; digits, whitespace, and punctuation are rejected.
+- Passwords are validated before acceptance.
 
 ## Testing
 

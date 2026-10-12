@@ -31,8 +31,8 @@ public class AuthenticationService {
     }
 
     public void registerUser(String username, String password) {
+        validateUsername(username);
         String normalizedUsername = normalizeUsername(username);
-        validateUsername(normalizedUsername);
         validatePassword(password);
         if (users.containsKey(normalizedUsername)) {
             throw new ValidationException("Username already exists.");
@@ -93,6 +93,9 @@ public class AuthenticationService {
         if (username == null || username.isBlank() || username.length() < AppConfig.USERNAME_MIN_LENGTH
                 || username.length() > AppConfig.USERNAME_MAX_LENGTH) {
             throw new ValidationException("Username length is invalid.");
+        }
+        if (!username.codePoints().allMatch(Character::isLetter)) {
+            throw new ValidationException("Username must contain only letters.");
         }
     }
 

@@ -77,6 +77,14 @@ class BankingServiceTest {
     }
 
     @Test
+    void registeringUsernameWithNonLettersIsRejected() {
+        for (String username : List.of("alice1", "alice!", "alice smith", " alice ")) {
+            assertThrows(ValidationException.class,
+                    () -> service.registerUser(username, "StrongPass123!"), username);
+        }
+    }
+
+    @Test
     void depositRejectsZeroAndNegativeAmounts() {
         String accountNumber = service.createAccount("alice", "Savings");
 
