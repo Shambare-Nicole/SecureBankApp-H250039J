@@ -72,23 +72,15 @@ After login, the user can:
 
 ## Screenshot Evidence
 
-The following screenshots show the application build, registration and login flows, logout, and transaction validation:
+Screenshots are included for the successful build, registration, login, logout, a rejected withdrawal, and the generic message check.
 
-| Build | Registration |
-| --- | --- |
-| ![Build success](evidence/Build%20success%20evidence.png) | ![Registration](evidence/Registration.png) |
-
-| Login | Successful login |
-| --- | --- |
-| ![Login evidence](evidence/login%20evidence.png) | ![Successful login](evidence/successful%20login%20evidence.png) |
-
-| Logout | Failed withdrawal |
-| --- | --- |
-| ![Logout success](evidence/Logout%20success.png) | ![Failed withdrawal](evidence/failed%20withdrawal%20evidence.png) |
-
-| Generic message check |
-| --- |
-| ![Generic message check](evidence/generic%20message%20check.png) |
+- Build: ![Build success](evidence/Build%20success%20evidence.png)
+- Registration: ![Registration](evidence/Registration.png)
+- Login: ![Login evidence](evidence/login%20evidence.png)
+- Successful login: ![Successful login](evidence/successful%20login%20evidence.png)
+- Logout: ![Logout success](evidence/Logout%20success.png)
+- Failed withdrawal: ![Failed withdrawal](evidence/failed%20withdrawal%20evidence.png)
+- Generic message check: ![Generic message check](evidence/generic%20message%20check.png)
 
 ## Data Persistence
 
@@ -127,17 +119,21 @@ The project includes automated tests to validate:
 
 ## Security Analysis
 
-| Threat | Where It Could Occur | Risk | Mitigation Implemented | How It Works | How It Was Tested |
-| --- | --- | --- | --- | --- | --- |
-| Plaintext password storage | Registration and `users.txt` persistence | A readable data file could expose account passwords. | Password hashes and salts are stored instead of plaintext passwords. | Passwords are processed with PBKDF2 and a randomly generated salt before persistence. | `passwordsAreHashedAndVerified` checks that a hash and salt are stored and login verifies the password. |
-| Weak password hashing / brute-force cracking | Password registration and login verification | A weak or unsalted hash makes offline password guessing easier. | PBKDF2 with HMAC-SHA256, 210,000 iterations, a random 16-byte salt, and a 256-bit hash. | Per-password salts prevent reusable precomputed hashes; PBKDF2 increases the cost of each guess. This slows cracking but cannot prevent it. | Tests verify hashing and login behavior; they do not benchmark cracking resistance. |
-| Unauthorized access to another user's account | Balance, deposit, withdrawal, and transaction-history operations | A logged-in user could view or alter another user's account. | `BankingService` checks account ownership for each operation. | The supplied username must match the account owner's username before access is allowed. | `usersCannotAccessAnotherUsersAccount` checks that all four operations reject another user's account. |
-| Repeated failed login attempts (credential stuffing / brute force) | Login | Repeated guesses could help an attacker discover a password. | In-memory per-username lockout after five failed attempts for five minutes. | Further login attempts for the locked username are rejected until the duration expires; a successful login resets that username's counter. | `loginLocksUsernameAfterMaximumFailedAttempts` checks locking at the configured threshold; counter reset is not separately tested. |
-| Invalid or negative transaction amounts | Deposit and withdrawal input | Invalid values could create incorrect balances or bypass transaction rules. | `BigDecimal` amounts with checks for positive values and configured minimum and maximum limits. | Invalid amounts are rejected before the account balance is changed; malformed text is rejected during parsing. | Tests cover zero and negative deposits and withdrawals, malformed deposit input, and an insufficient-funds withdrawal. |
-| Malformed or corrupted data files | Loading `users.txt`, `accounts.txt`, or `transactions.txt` | A malformed record could prevent the application from starting or disrupt loaded data. | Malformed records are skipped with a warning; loading fails safely after more than five malformed lines in one file. | Warnings include the filename and line number, not the record contents. | Tests check skipping a malformed user record and failure above the threshold in `users.txt`; accounts and transactions are not separately tested. |
-| Partial/interrupted file writes corrupting data | Saving users, accounts, or transactions | A crash during a direct write could leave a truncated data file. | Each file is written to a temporary file and moved into place with `ATOMIC_MOVE`. | The target file is replaced only after the temporary file has been written, where the filesystem supports atomic moves. | Persistence is checked by reloading the service from the same directory; an interrupted write is not simulated. |
-| Information leakage through error messages | Login, account operations, and malformed-record logging | Detailed errors could reveal credentials, account data, or stored record contents. | Login failures use a generic message; storage failures use a generic CLI message; malformed-record warnings omit record contents. | Sensitive input and file-record contents are not included in those messages. Some account and validation errors remain specific, so protection is partial. | No dedicated error-message leakage test is present; this is based on code inspection. |
-| Financial precision errors (floating point) | Balance and transaction calculations | Binary floating-point errors or extra decimal places could make recorded transactions disagree with rounded balances. | Monetary values use `BigDecimal`; balances are rounded to two decimal places with `HALF_EVEN`. | Decimal arithmetic avoids binary floating-point representation errors, but extra input decimal places are not explicitly rejected and transaction records can retain them while balances are rounded. | Deposit and withdrawal tests check two-decimal balances using `BigDecimal.compareTo()`; higher-precision inputs are not tested. |
+Passwords are stored as PBKDF2 hashes with randomly generated salts rather than as plaintext. The implementation uses HMAC-SHA256, 210,000 iterations, a 16-byte salt, and a 256-bit hash. Per-password salts prevent reusable precomputed hashes, while the iteration count raises the cost of guessing; this slows offline cracking but cannot prevent it. The `passwordsAreHashedAndVerified` test checks stored hashes and salts and verifies login behavior, but does not benchmark cracking resistance.
+
+`BankingService` checks account ownership before balance, deposit, withdrawal, and transaction-history operations. The supplied username must match the account owner's username. The `usersCannotAccessAnotherUsersAccount` test checks that each of these operations rejects access to another user's account.
+
+Login applies an in-memory, per-username lockout after five failed attempts for five minutes. Further attempts are rejected during that period, and a successful login resets the counter. The `loginLocksUsernameAfterMaximumFailedAttempts` test checks the threshold; the reset behavior is not tested separately.
+
+Deposit and withdrawal amounts use `BigDecimal` and must be positive and within the configured minimum and maximum limits. Invalid amounts are rejected before changing the balance, and malformed text is rejected during parsing. Tests cover zero and negative amounts, malformed deposit input, and an insufficient-funds withdrawal.
+
+When loading `users.txt`, `accounts.txt`, or `transactions.txt`, malformed records are skipped with a warning. Loading fails after more than five malformed lines in a file. Warnings include the filename and line number, not the record contents. Tests cover skipping a malformed user record and exceeding the threshold in `users.txt`; the other data files are not tested separately.
+
+Each data file is saved to a temporary file and then moved into place with `ATOMIC_MOVE`, where the filesystem supports it. This avoids replacing the target until the temporary file has been written, but does not protect a set of files as one transaction. Persistence is tested by reloading the service from the same directory; interrupted writes are not simulated.
+
+Login and storage failures use generic messages, and malformed-record warnings omit record contents. Sensitive input and stored records are not included in those messages, although some account and validation errors remain specific. There is no dedicated error-message leakage test; this assessment is based on code inspection.
+
+Monetary values use `BigDecimal`, and balances are rounded to two decimal places with `HALF_EVEN` to avoid binary floating-point errors. Inputs with extra decimal places are not explicitly rejected, however, so transaction records can retain more precision than rounded balances. Deposit and withdrawal tests check two-decimal balances with `BigDecimal.compareTo()`; higher-precision inputs are not tested.
 
 This project does not encrypt account or transaction files at rest, and it cannot protect data from someone with direct access to the files. Atomic replacement applies to individual files only; there is no multi-process file locking or cross-file transaction covering both balances and transaction history. Error-message protection is also partial, as noted above.
 
